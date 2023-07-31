@@ -1,0 +1,183 @@
+## Path:           System/Disk Encryption/Encryption Key Server
+## Description:    Global settings for disk encryption (cryptctl2) server daemon
+## ServiceRestart: cryptctl2-server
+
+## Type:    string
+## Default: ""
+#
+# Salted hash of password-based authentication of incoming RPC calls. The parameter is constructed automatically
+# by the initial setup routine of cryptctl2 server, hence avoid editing this parameter manually.
+AUTH_PASSWORD_HASH=""
+
+## Type:    string
+## Default: ""
+#
+# Salt of password-based authentication of incoming RPC calls. The parameter is constructed automatically by the
+# initial setup routine of cryptctl2 server, hence avoid editing this parameter manually.
+AUTH_PASSWORD_SALT=""
+
+## Type:    string
+## Default: ""
+#
+# (Optional) path to PEM-encoded custom certificate authority that issued the TLS certificate for the key server.
+# Leave empty if the TLS certificate was issued by a well-known certificate authority.
+TLS_CA_PEM="/var/lib/cryptctl2/certs/ca.crt"
+
+## Type:    string
+## Default: ""
+#
+# Location of PEM-encoded TLS certificate file, this is mandatory.
+TLS_CERT_PEM=""
+
+## Type:    string
+## Default: ""
+#
+# Location of PEM-encoded TLS certificate key file that corresponds to the certificate, this is mandatory.
+TLS_CERT_KEY_PEM=""
+
+## Type:    yesno
+## Default: "no"
+#
+# Whether the server will validate client's certificate before accepting its request.
+TLS_VALIDATE_CLIENT="no"
+
+## Type:    string
+## Default: "0.0.0.0"
+#
+# Address of the network interface to listen on for incoming key requests.
+LISTEN_ADDRESS="0.0.0.0"
+
+## Type:    integer
+## Default: 3737
+#
+# Port to listen on for incoming key requests.
+LISTEN_PORT=3737
+
+## Type:    string
+## Default: "/var/lib/cryptctl2/keydb"
+#
+# Storage location for disk encryption keys and records
+# Existing keys and records will not be automatically moved to new location if you modify this parameter.
+KEY_DB_DIR="/var/lib/cryptctl2/keydb"
+
+## Type:    string
+## Default: "/var/lib/cryptctl2/certs"
+#
+# Storage location for the certificates
+# Existing keys and records will not be automatically moved to new location if you modify this parameter.
+CERT_DIR="/var/lib/cryptctl2/certs"
+
+## Type:    string
+## Default: ""
+#
+# Notification emails' recipient addresses, separated by spaces.
+# If all Email parameters are filled in, notifications will be sent upon key creation/retrieval events.
+EMAIL_RECIPIENTS=""
+
+## Type:    string
+## Default: ""
+#
+# Notification emails' From address.
+# If all Email parameters are filled in, notifications will be sent upon key creation/retrieval events.
+EMAIL_FROM_ADDRESS=""
+
+## Type:    string
+## Default: ""
+#
+# Mail agent address and port number in the format of "address:port". The address must be fully qualified domain name.
+# If this parameter is set, mail notifications will be sent upon key creation/retrieval events.
+EMAIL_AGENT_AND_PORT=""
+
+## Type:    string
+## Default: ""
+#
+# Mail agent plain authentication username (optional).
+EMAIL_AGENT_USERNAME=""
+
+## Type:    string
+## Default: ""
+#
+# Mail agent plain authentication password (optional).
+EMAIL_AGENT_PASSWORD=""
+
+## Type:    string
+## Default: "A new file system has been encrypted"
+#
+# Subject shown in notification emails sent by key creation events.
+EMAIL_KEY_CREATION_SUBJECT="A new file system has been encrypted"
+
+## Type:    string
+## Default: "The key server now has encryption key for the following file system:"
+#
+# A greeting message shown in notification emails sent by key creation events.
+EMAIL_KEY_CREATION_GREETING="The key server now has encryption key for the following file system:"
+
+## Type:    string
+## Default: "An encrypted file system has been accessed"
+#
+# Subject shown in notification emails sent by key retrieval events.
+EMAIL_KEY_RETRIEVAL_SUBJECT="An encrypted file system has been accessed"
+
+## Type:    string
+## Default: "The key server has given out the following encryption key:"
+#
+# A greeting message shown in notification emails sent by key retrieval events.
+EMAIL_KEY_RETRIEVAL_GREETING="The key server has given out the following encryption key:"
+
+## Type:    string
+## Default: ""
+#
+# If key server should act as KMIP proxy, this is the KMIP hostname:port list, separated by space.
+# (e.g. host1:port1 host2:port2 ...)
+KMIP_SERVER_ADDRESSES=""
+
+## Type:    integer
+## Default: ""
+#
+# If key server should act as KMIP proxy, this is the KMIP service port.
+KMIP_SERVER_PORT=""
+
+## Type:    string
+## Default: ""
+#
+# If key server should act as KMIP proxy, this is the KMIP access user name.
+KMIP_SERVER_USER=""
+
+## Type:    string
+## Default: ""
+#
+# If key server should act as KMIP proxy, this is the KMIP access password.
+KMIP_SERVER_PASS=""
+
+## Type:    string
+## Default: ""
+#
+# If key server should act as KMIP proxy, this is the KMIP server CA certificate.
+KMIP_CA_PEM=""
+
+## Type:    string
+## Default: ""
+#
+# If key server should act as KMIP proxy, this is the KMIP client certificate.
+KMIP_TLS_CERT_PEM=""
+
+## Type:    string
+## Default: ""
+#
+# If key server should act as KMIP proxy, this is the KMIP client certificate key.
+KMIP_TLS_CERT_KEY_PEM=""
+
+## Type:    yesno
+## Default: "yes"
+#
+# For security reasons, you are strongly recommended to leave the setting at its default "yes".
+# If set to "no", cryptctl2 server will reduce its security measures by not verifying KMIP server's TLS certificate.
+# Remember to restart cryptctl2-server.service after changing any value of this file.
+KMIP_TLS_DO_VERIFY="yes"
+
+## Type:    yesno
+## Default: "no"
+#
+# For security reason it is not recommended to allow hashed password authentication.
+# For compatibility reason this can be set yes until all clients are updated
+ALLOW_HASH_AUTH="no"
