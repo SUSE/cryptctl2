@@ -1,1 +1,2 @@
-ACTION=="add" SUBSYSTEM=="block", TAG+="systemd", ENV{SYSTEMD_WANTS}+="cryptctl2-auto-unlock@$env{ID_FS_UUID}.service"
+#ACTION=="add" SUBSYSTEM=="block", TAG+="systemd", ENV{SYSTEMD_WANTS}+="cryptctl2-auto-unlock@$env{ID_FS_UUID}.service"
+SUBSYSTEM=="block", ACTION=="add", RUN+="/usr/sbin/cryptctl2-auto-unlock.sh $env{DEVNAME} ID_SERIAL=$env{ID_SERIAL} ID_PART_TABLE_UUID=$env{ID_PART_TABLE_UUID} ID_PART_ENTRY_UUID=$env{ID_PART_ENTRY_UUID} ID_FS_UUID=$env{ID_FS_UUID}"

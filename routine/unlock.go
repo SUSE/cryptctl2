@@ -154,7 +154,7 @@ func AutoOnlineUnlockFS(progressOut io.Writer, client *keyserv.CryptClient, UUID
 			}
 			if len(resp.Missing) > 0 {
 				// Stop trying if the server does not even have the key
-				return fmt.Errorf("AutoOnlineUnlockFS: server does not have encryption key for \"%s\"", blkDev.UUID)
+				return fmt.Errorf("AutoOnlineUnlockFS: server does not have encryption key for \"%s\"", UUID)
 			}
 		}
 		// Server may have rejected the key request due to MaxActive being exceeded

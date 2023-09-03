@@ -68,7 +68,7 @@ func KeyRPCDaemon() error {
 }
 
 // Creates a new record for an uuid
-func AddDevice(UUID, MappedName, MountPoint, MountOptions, MaxActive, AllowedClients, AutoEncyption string) error {
+func AddDevice(UUID, MappedName, MountPoint, MountOptions, AllowedClients string, MaxActive int, AutoEncyption bool) error {
 	sys.LockMem()
 	client, err := keyserv.NewCryptClient("unix", keyserv.DomainSocketFile, nil, "", "")
 	if err != nil {
@@ -79,14 +79,6 @@ func AddDevice(UUID, MappedName, MountPoint, MountOptions, MaxActive, AllowedCli
 	if err := client.Ping(keyserv.PingRequest{PlainPassword: password}); err != nil {
 		return fmt.Errorf("AddRecord: failed to authorize to cryptctl2 server - %v", err)
 	}
-	iMaxActive, err := strconv.Atoi(MaxActive)
-	if err != nil {
-		iMaxActive = -1
-	}
-	bAutoEncyption, err := strconv.ParseBool(AutoEncyption)
-	if err != nil {
-		bAutoEncyption = false
-	}
 
 	req := keyserv.CreateKeyReq{
 		PlainPassword:  password,
@@ -94,9 +86,9 @@ func AddDevice(UUID, MappedName, MountPoint, MountOptions, MaxActive, AllowedCli
 		MappedName:     MappedName,
 		MountPoint:     MountPoint,
 		MountOptions:   strings.Split(MountOptions, ","),
-		MaxActive:      iMaxActive,
+		MaxActive:      MaxActive,
 		AllowedClients: strings.Split(AllowedClients, ","),
-		AutoEncyption:  bAutoEncyption,
+		AutoEncyption:  AutoEncyption,
 	}
 	if _, err := client.CreateKey(req); err != nil {
 		return fmt.Errorf("AddRecord: failed to add new record to cryptctl2 server - %v , %v", err, req)

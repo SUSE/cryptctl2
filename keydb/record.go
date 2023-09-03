@@ -16,7 +16,7 @@ const (
 	CurrentRecordVersion = 3 // CurrentRecordVersion is the version of new database records to be created by cryptctl2.
 )
 
-var RegexUUID = regexp.MustCompile("^[a-zA-Z0-9-]+$") // RegexUUID matches characters that are allowed in a UUID
+var RegexUUID = regexp.MustCompile("^[a-zA-Z0-9-=_]+$") // RegexUUID matches characters that are allowed in a UUID
 
 /*
 ValidateUUID returns an error only if the input string is empty, or if there are illegal

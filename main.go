@@ -8,43 +8,66 @@ package main
 import (
 	"cryptctl2/command"
 	"cryptctl2/sys"
-	"fmt"
+	"flag"
 	"fmt"
 	"os"
 	"os/signal"
 	"runtime"
+	"strings"
 	"syscall"
 )
 
-func PrintHelpAndExit(exitStatus int) {
-	fmt.Println(`cryptctl2: encrypt and decrypt file systems using network key server.
+var helpText = `cryptctl2: encrypt and decrypt file systems using network key server.
 Copyright (C) 2023 SUSE Software Solutions Germany GmbH, Germany
-This program comes with ABSOLUTELY NO WARRANTY.This is free software, and you
+This program comes with ABSOLUTELY NO WARRANTY. This is free software, and you
 are welcome to redistribute it under certain conditions; see file "LICENSE".
 
-Maintain a key server:
-  cryptctl2 init-server     Set up this computer as a new key server.
-  cryptctl2 list-keys       Show all encryption keys.
-  cryptctl2 show-key UUID   Display pending-commands and details of a key.
-  cryptctl2 edit-key UUID   Edit stored key information.
-  cryptctl2 send-command    Record a pending mount/umount command for a disk.
-  cryptctl2 clear-commands  Clear all pending commands of a disk.
-  cryptctl2 add-device UUID MappedName MountPoint MountOptions MaxActive AllowedClients AutoEncyption
-                            Creates a new device in the keydb.
-  cryptctl2 add-allowed-client UUID AllowedClient
-                            Allow a client to access a device.
-  cryptctl2 remove-allowed-client UUID AllowedClient
-  							Remove client from the access list of a device.
-  cryptctl2 list-allowed-clients UUID
-  							List the clients which has access to a device.
-  cryprctl2 create-client-certificate DNSName [IPAdress]
+Syntax: cryptctl2 -action <action> [options]
 
-Encrypt/unlock file systems:
-  cryptctl2 encrypt         Set up a new file system for encryption.
-  cryptctl2 inplace-encrypt Set up an existing file system for encryption.
-  cryptctl2 auto-unlock     Paswordless unlock a registered device.
-  cryptctl2 online-unlock   Forcibly unlock all file systems via key server.
-  cryptctl2 offline-unlock  Unlock a file system via a key record file.`)
+Server actions:
+daemon
+	Start the cryptctl2 server daemon.
+init-server
+	Set up this computer as a new key server.
+list-keys
+	Show all encryption keys.
+show-key -diskId=UUID
+	Display pending-commands and details of a key.
+edit-key -diskId=UUID
+	Edit stored key information.
+send-command
+	Record a pending mount/umount command for a disk.
+clear-commands
+	Clear all pending commands of a disk.
+add-device -diskId=String -mappedName=String [-mountPoint=String -mountOptions=String -maxActive=Int -allowedClients=String -autoEncyption=Bool]
+	Creates a new device in the keydb.
+add-allowed-client -diskId=String -allowedClient=String
+	Allow a client to access a device.
+remove-allowed-client -disk=String -aölowedClient=String
+	Remove client from the access list of a device.
+list-allowed-clients -disk=String
+	List the clients which has access to a device.
+create-client-certificate -dnsName=String [-ipAdress=String]
+	Creates a client certificate for the given DNS-Name and if given IP-Address
+
+Client actions:
+client-daemon
+	Start the cryptctl2 client daemon.
+encrypt
+	Set up a new file system for encryption.
+inplace-encrypt
+	Set up an existing file system for encryption.
+auto-unlock -diskId=UUID
+	Paswordless unlock a registered device.
+online-unlock
+	Forcibly unlock all file systems via key server.
+offline-unlock
+	Unlock a file system via a key record file.
+`
+
+func PrintHelpAndExit(exitStatus int) {
+	fmt.Println(helpText)
+	flag.PrintDefaults()
 	os.Exit(exitStatus)
 }
 
@@ -68,11 +91,20 @@ func main() {
 		}
 	}()
 
-	if len(os.Args) == 1 {
-		PrintHelpAndExit(0)
-	}
+	action := flag.String("action", "daemon", helpText)
+	diskID := flag.String("diskID", "", "The id of the device. In normal case this is the partition UUID. Ohterwise the type of the used ID need to be added as prefix separated by '='. Ex.: ID_SERIAL:3600140585b053f0034b46ccbe409913b")
+	mappedName := flag.String("mappedName", "", "The mapped name of the device.")
+	mountPoint := flag.String("mountPoint", "", "The path where the device need to be mounted if any.")
+	mountOptions := flag.String("mountOptions", "", "Comma separated list of mount options.")
+	//maxAlive := flag.Int("maxAlive",3600,"How long (in seconds) should be stay the device encripted if the cryptcl server is not accessible.")
+	maxActive := flag.Int("maxActive", 0, "How many clients may encrypt the device to same time.")
+	allowedClients := flag.String("allowedClients", "", "Comma separated list of client which may have acces to the device.")
+	autoEncyption := flag.Bool("autoEncyption", false, "Should the device autmaticaly encrypted if it will be accessed at first time?")
+	dnsName := flag.String("dnsName", "", "DNS-Name of the client.")
+	ipAddress := flag.String("ipAddress", "", "IPAddress of the client.")
+	flag.Parse()
 
-	switch os.Args[1] {
+	switch *action {
 	case "help":
 		PrintHelpAndExit(0)
 	case "daemon":
@@ -92,18 +124,18 @@ func main() {
 		}
 	case "edit-key":
 		// Server - let user edit key details such as mount point and mount options
-		if len(os.Args) < 3 {
-			sys.ErrorExit("Please specify UUID of the key that you wish to edit.")
+		if *diskID == "" {
+			sys.ErrorExit("Please specify -diskID of the key that you wish to edit.")
 		}
-		if err := command.EditKey(os.Args[2]); err != nil {
+		if err := command.EditKey(*diskID); err != nil {
 			sys.ErrorExit("%v", err)
 		}
 	case "show-key":
 		// Server - show key record details except key content
-		if len(os.Args) < 3 {
-			sys.ErrorExit("Please specify UUID of the key that you wish to see.")
+		if *diskID == "" {
+			sys.ErrorExit("Please specify -diskID of the key that you wish to see.")
 		}
-		if err := command.ShowKey(os.Args[2]); err != nil {
+		if err := command.ShowKey(*diskID); err != nil {
 			sys.ErrorExit("%v", err)
 		}
 	case "send-command":
@@ -115,44 +147,45 @@ func main() {
 			sys.ErrorExit("%v", err)
 		}
 	case "add-device":
-		if len(os.Args) != 9 {
-			sys.ErrorExit("Please specify following parameters: UUID MappedName MountPoint MountOptions MaxActive AllowedClients AutoEncyption")
+		if *diskID == "" {
+			sys.ErrorExit("Please specify atlast -diskID of the device.")
 		}
-		if err := command.AddDevice(os.Args[2], os.Args[3], os.Args[4], os.Args[5], os.Args[6], os.Args[7], os.Args[8]); err != nil {
+		if err := command.AddDevice(*diskID, *mappedName, *mountPoint, *mountOptions, *allowedClients, *maxActive, *autoEncyption); err != nil {
 			sys.ErrorExit("%v", err)
 		}
 	case "add-allowed-client":
-		if len(os.Args) != 4 {
-			sys.ErrorExit("Please specify following parameters: UUID AllowedClient")
+		if *diskID == "" && *allowedClients == "" {
+			sys.ErrorExit("Please specify -diskID of the disk and the concerned DNS Name(s).")
 		}
-		if err := command.AddAllowedClient(os.Args[2], os.Args[3]); err != nil {
-			sys.ErrorExit("%v", err)
+		for _, client := range strings.Split(*allowedClients, ",") {
+			if err := command.AddAllowedClient(*diskID, client); err != nil {
+				sys.ErrorExit("%v", err)
+			}
 		}
+
 	case "remove-allowed-client":
-		if len(os.Args) != 4 {
-			sys.ErrorExit("Please specify following parameters: UUID AllowedClient")
+		if *diskID == "" && *allowedClients == "" {
+			sys.ErrorExit("Please specify -diskID of the disk and the concerned DNS Name(s).")
 		}
-		if err := command.AddAllowedClient(os.Args[2], os.Args[3]); err != nil {
-			sys.ErrorExit("%v", err)
+		for _, client := range strings.Split(*allowedClients, ",") {
+			if err := command.AddAllowedClient(*diskID, client); err != nil {
+				sys.ErrorExit("%v", err)
+			}
 		}
 	case "list-allowed-clients":
-		if len(os.Args) != 3 {
-			sys.ErrorExit("Please specify following parameter: UUID")
+		if *diskID == "" {
+			sys.ErrorExit("Please specify following parameter: -diskID")
 		}
-		if err := command.ListAllowedClient(os.Args[2]); err != nil {
+		if err := command.ListAllowedClient(*diskID); err != nil {
 			sys.ErrorExit("%v", err)
 		}
 	case "create-client-certificate":
-		if len(os.Args) == 3 {
-			if err := command.CreateCertificate(os.Args[2], ""); err != nil {
-				sys.ErrorExit("%v", err)
-			}
-		} else if len(os.Args) == 4 {
-			if err := command.CreateCertificate(os.Args[2], os.Args[3]); err != nil {
+		if *dnsName != "" {
+			if err := command.CreateCertificate(*dnsName, *ipAddress); err != nil {
 				sys.ErrorExit("%v", err)
 			}
 		} else {
-			sys.ErrorExit("Please specify following parameter: DNSName [IPAddress]")
+			sys.ErrorExit("Please specify following parameter: -dnsName [-ipAddress]")
 		}
 	// Client functions
 	case "client-daemon":
@@ -167,10 +200,10 @@ func main() {
 		}
 	case "auto-unlock":
 		// Client - automatically unlock a file system without using a password
-		if len(os.Args) < 3 {
-			sys.ErrorExit("UUID is missing from command line parameters")
+		if *diskID == "" {
+			sys.ErrorExit("Please specify following parameter: -diskID")
 		}
-		if err := command.AutoOnlineUnlockFS(os.Args[2]); err != nil {
+		if err := command.AutoOnlineUnlockFS(*diskID); err != nil {
 			sys.ErrorExit("%v", err)
 		}
 	case "online-unlock":

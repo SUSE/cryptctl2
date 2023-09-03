@@ -5,7 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/sbin/cryptctl2 client-daemon
+ExecStart=/usr/sbin/cryptctl2 --action client-daemon
 User=root
 Group=root
 WorkingDirectory=/
