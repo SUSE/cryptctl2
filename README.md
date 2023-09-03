@@ -22,6 +22,9 @@ key server closely tracks its IP, host name, and timestamp, in order to determin
 the key; if the upper limit number of computers is reached, the key will no longer be handed out automatically; system
 administrator can always retrieve encryption keys by using key server's access password.
 
+If the validation of client's certificate is turned on the acces to the devices can be controlled by the DNS or IP subject alternative name of the client certificate.
+For this reason cryptctl2 provides an own certificate managemen to create client certficates signed by the own created CA.
+
 cryptctl2 can optionally utilise an external key management appliance that understands KMIP v1.3 to store the actual disk
 encryption keys. Should you choose to use the external appliance, you may enter KMIP connectivity details such as host
 name, port, certificate, and user credentials during server initialisation sequence. If you do not wish to use the
