@@ -16,12 +16,14 @@ key generated from cryptography random pool. Encrypted directories will always b
 by retrieving their encryption keys from key server automatically; this operation tolerates temporary network failure or
 key server down time by making continuous attempts until success, for maximum of 24 hours.
 
+## Count based access control
 The system administrator can define an upper limit number of computers that can get hold of a key simultaneously. After
 a client computer successfully retrieves a key, it will keep reporting back to key server that it is online, and the
 key server closely tracks its IP, host name, and timestamp, in order to determine number of computers actively using
 the key; if the upper limit number of computers is reached, the key will no longer be handed out automatically; system
 administrator can always retrieve encryption keys by using key server's access password.
 
+## Certificate based access control
 If the validation of client's certificate is turned on the acces to the devices can be controlled by the DNS or IP subject alternative name of the client certificate.
 For this reason cryptctl2 provides an own certificate managemen to create client certficates signed by the own created CA.
 
