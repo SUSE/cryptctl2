@@ -48,26 +48,8 @@ func ManOnlineUnlockFS(progressOut io.Writer, client *keyserv.CryptClient, passw
 	hasErr := false
 	if len(resp.Granted) > 0 {
 		// Unlock and mount all disks that have keys on the server
-		for uuid, rec := range resp.Granted {
-			fmt.Fprintf(progressOut, "Mounting %s (%s) on %s...\n", reqDevs[uuid].Path, rec.GetMountOptionStr(), rec.MountPoint)
-			blkDev := reqDevs[uuid].Path
-			dmName := MakeDeviceMapperName(reqDevs[uuid].Path)
-			dmDev := path.Join("/dev/mapper/", dmName)
-			// Resume on error, in case some operations fail due to them being already carried out in previous runs.
-			if err := fs.CryptOpen(rec.Key, blkDev, dmName); err != nil {
-				fmt.Fprintf(progressOut, "  *%v\n", err)
-			}
-			if err := os.MkdirAll(rec.MountPoint, 0755); err != nil {
-				fmt.Fprintf(progressOut, "  *failed to make mount point directory - %v\n", err)
-			}
-			// Intentionally ignore this error and let mount inform the user
-			if err := fs.Mount(dmDev, "", rec.MountOptions, rec.MountPoint); err != nil {
-				fmt.Fprintf(progressOut, "  *%v\n", err)
-				if blk, found := fs.GetBlockDevice(dmDev); !found || blk.MountPoint != rec.MountPoint {
-					// Consider that an error has happened only if the encrypted block device is not mounted
-					hasErr = true
-				}
-			}
+		for _, rec := range resp.Granted {
+			UnlockFS(progressOut, rec, 2)
 			fmt.Fprintln(progressOut)
 		}
 	}
@@ -87,22 +69,25 @@ func ManOnlineUnlockFS(progressOut io.Writer, client *keyserv.CryptClient, passw
 func UnlockFS(progressOut io.Writer, rec keydb.Record, maxAttempts int) error {
 	// Collect information from all encrypted file systems
 	blockDevs := fs.GetBlockDevices()
-	reqUUIDs := make([]string, 0, 0)
-	reqDevs := make(map[string]fs.BlockDevice)
-	for _, dev := range blockDevs {
-		if dev.MountPoint == "" && dev.IsLUKSEncrypted() && dev.UUID != "" {
-			reqUUIDs = append(reqUUIDs, dev.UUID)
-			reqDevs[dev.UUID] = dev
-		}
-	}
-	// See if the record can unlock any file system
-	unlockDev, found := reqDevs[rec.UUID]
+	unlockDev, found := blockDevs.GetByCriteria(rec.UUID, "", "", "", "", "", "")
 	if !found {
-		return errors.New("The record does not belong to any encrypted file system on this computer (UUID mismatch).")
+		return errors.New(fmt.Sprintf("Can not find device with UUID '%s'.", rec.UUID))
+	}
+	if !unlockDev.IsLUKSEncrypted() {
+		if rec.AutoEncyption {
+			if err := fs.CryptFormat(rec.Key, unlockDev.Path, unlockDev.UUID); err != nil {
+				return err
+			}
+		} else {
+			return errors.New(fmt.Sprintf("The device with UUID '%s' does not belongs to an LUKS device and AutoEncrytion is set false.", rec.UUID))
+		}
 	}
 	// Mount the encrypted file system
 	// Resume on error, in case some operations fail due to them being already carried out in previous runs.
-	dmName := MakeDeviceMapperName(unlockDev.Path)
+	dmName := rec.MappedName
+	if dmName == "" {
+		MakeDeviceMapperName(unlockDev.Path)
+	}
 	dmDev := path.Join("/dev/mapper/", dmName)
 	/*
 		Due to race conditions in kernel it is possible for an attempt to fail without apparent reason.
@@ -110,26 +95,35 @@ func UnlockFS(progressOut io.Writer, rec keydb.Record, maxAttempts int) error {
 		mounted file system.
 		Sleep a second between retries.
 	*/
-	var succeeded bool
+	fmt.Fprintf(progressOut, "Start unlocking device with UUID '%s'", rec.UUID)
+	succeeded := true
+	mounted := false
 	for i := 0; i < maxAttempts; i++ {
 		if err := fs.CryptOpen(rec.Key, unlockDev.Path, dmName); err != nil {
 			fmt.Fprintf(progressOut, "  *%v\n", err)
+			succeeded = false
 		}
-		if err := os.MkdirAll(rec.MountPoint, 0755); err != nil {
-			fmt.Fprintf(progressOut, "  *failed to make mount point directory - %v\n", err)
+		if rec.MountPoint != "" {
+			if err := os.MkdirAll(rec.MountPoint, 0755); err != nil {
+				fmt.Fprintf(progressOut, "  *failed to make mount point directory - %v\n", err)
+				succeeded = false
+			}
+			if err := fs.Mount(dmDev, "", rec.MountOptions, rec.MountPoint); err != nil {
+				fmt.Fprintf(progressOut, "  *%v\n", err)
+				succeeded = false
+			}
+			mounted = true
 		}
-		if err := fs.Mount(dmDev, "", rec.MountOptions, rec.MountPoint); err != nil {
-			fmt.Fprintf(progressOut, "  *%v\n", err)
-		}
-		// Ultimate success is determined by the appearance of mount point instead of the commands above
-		if blk, found := fs.GetBlockDevice(dmDev); found && blk.MountPoint == rec.MountPoint {
-			succeeded = true
+		if succeeded {
 			break
 		}
+		fmt.Fprintf(progressOut, "'%d'-th unlocking of device with UUID '%s' failed", i+1, rec.UUID)
 		time.Sleep(1 * time.Second)
 	}
-	if succeeded {
+	if succeeded && mounted {
 		fmt.Fprintf(progressOut, "The encrypted file system has been successfully mounted on \"%s\".\n", rec.MountPoint)
+	} else if succeeded {
+		fmt.Fprintf(progressOut, "The encrypted file system has been successfully unlocked \"%s\".\n", rec.UUID)
 	} else {
 		return errors.New("Failed to process the encrypted file system. Check output for more details.")
 	}
@@ -140,17 +134,8 @@ func UnlockFS(progressOut io.Writer, rec keydb.Record, maxAttempts int) error {
 Make continuous attempts to retrieve encryption key from key server to unlock a file system specified by the UUID.
 If maxRetrySec is zero or negative, then only one attempt will be made to unlock the file system.
 */
-func AutoOnlineUnlockFS(progressOut io.Writer, client *keyserv.CryptClient, uuid string, maxRetrySec int64) error {
+func AutoOnlineUnlockFS(progressOut io.Writer, client *keyserv.CryptClient, UUID string, maxRetrySec int64) error {
 	sys.LockMem()
-	// Find out UUID of the block device
-	blkDevs := fs.GetBlockDevices()
-	blkDev, found := blkDevs.GetByCriteria(uuid, "", "", "", "", "", "")
-	if !found {
-		return fmt.Errorf("AutoOnlineUnlockFS: failed to get information of \"%s\"", uuid)
-	} else if !blkDev.IsLUKSEncrypted() {
-		fmt.Fprintf(progressOut, "AutoOnlineUnlockFS: skip \"%s\" as it is not a LUKS-encrypted block device\n", uuid)
-		return nil
-	}
 	// Keep trying until maxRetrySec elapses
 	numFailures := 0
 	begin := time.Now().Unix()
@@ -159,10 +144,10 @@ func AutoOnlineUnlockFS(progressOut io.Writer, client *keyserv.CryptClient, uuid
 		hostname, _ := sys.GetHostnameAndIP()
 		resp, err := client.AutoRetrieveKey(keyserv.AutoRetrieveKeyReq{
 			Hostname: hostname,
-			UUIDs:    []string{blkDev.UUID},
+			UUIDs:    []string{UUID},
 		})
 		if err == nil {
-			rec, exists := resp.Granted[blkDev.UUID]
+			rec, exists := resp.Granted[UUID]
 			if exists {
 				// Key has been granted by server, proceed to unlock disk.
 				return UnlockFS(progressOut, rec, 3)
@@ -179,7 +164,7 @@ func AutoOnlineUnlockFS(progressOut io.Writer, client *keyserv.CryptClient, uuid
 		// Retry the operation for a while
 		if time.Now().Unix() > begin+maxRetrySec {
 			return fmt.Errorf("AutoOnlineUnlockFS: failed to unlock \"%s\" (%v) and have given up after %d seconds",
-				blkDev.UUID, err, maxRetrySec)
+				UUID, err, maxRetrySec)
 		}
 		// In case of failure, only report the first few occasions among consecutive failures.
 		if err != nil {
@@ -187,7 +172,7 @@ func AutoOnlineUnlockFS(progressOut io.Writer, client *keyserv.CryptClient, uuid
 				fmt.Fprint(progressOut, "AutoOnlineUnlockFS: suppress further failure messages until success\n")
 			} else if numFailures < 5 {
 				fmt.Fprintf(progressOut, "AutoOnlineUnlockFS: failed to unlock \"%s\", will retry in %d seconds - %v\n",
-					blkDev.UUID, AUTO_UNLOCK_RETRY_INTERVAL_SEC, err)
+					UUID, AUTO_UNLOCK_RETRY_INTERVAL_SEC, err)
 			}
 			numFailures++
 		}

@@ -9,6 +9,7 @@ import (
 	"cryptctl2/command"
 	"cryptctl2/sys"
 	"fmt"
+	"fmt"
 	"os"
 	"os/signal"
 	"runtime"
@@ -41,6 +42,7 @@ Maintain a key server:
 Encrypt/unlock file systems:
   cryptctl2 encrypt         Set up a new file system for encryption.
   cryptctl2 inplace-encrypt Set up an existing file system for encryption.
+  cryptctl2 auto-unlock     Paswordless unlock a registered device.
   cryptctl2 online-unlock   Forcibly unlock all file systems via key server.
   cryptctl2 offline-unlock  Unlock a file system via a key record file.`)
 	os.Exit(exitStatus)
@@ -152,6 +154,7 @@ func main() {
 		} else {
 			sys.ErrorExit("Please specify following parameter: DNSName [IPAddress]")
 		}
+	// Client functions
 	case "client-daemon":
 		// Client - run daemon that primarily polls and reacts to pending commands issued by RPC server
 		if err := command.ClientDaemon(); err != nil {
