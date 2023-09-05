@@ -4,8 +4,8 @@ package fs
 
 import (
 	"bytes"
-	"fmt"
 	"cryptctl2/sys"
+	"fmt"
 	"os"
 	"os/exec"
 	"regexp"
@@ -17,6 +17,7 @@ import (
 const (
 	BIN_MKFS   = "/usr/sbin/mkfs"
 	BIN_LSBLK  = "/usr/bin/lsblk"
+	LSBLK_OPT  = "SERIAL,PTUUID,PARTUUID,UUID,NAME,TYPE,FSTYPE,MOUNTPOINT,SIZE,PKNAME"
 	BIN_MOUNT  = "/usr/bin/mount"
 	BIN_UMOUNT = "/usr/bin/umount"
 )
@@ -25,7 +26,10 @@ var lsblkFields = regexp.MustCompile(`"((?:\\"|[^"])*)"`) // extract values from
 
 // Represent a block device currently detected on the system.
 type BlockDevice struct {
-	UUID       string
+	SERIAL     string // disk serial number (SCSI_IDENT_SERIAL)
+	PTUUID     string // partition table identifier (usually UUID)
+	PARTUUID   string // partition UUID
+	UUID       string // filesystem UUID
 	Name       string // Name is the device node name
 	Path       string // full path to the device node under /dev including the prefix
 	Type       string // device type can be: partition, disk, encrypted, etc..
@@ -45,8 +49,25 @@ type BlockDevices []BlockDevice
 
 // Find the first block device that satisfies the given criteria. If a criteria is empty, it is ignored.
 func (blkDevs BlockDevices) GetByCriteria(uuid, devPath, devType, fileSystem, mountPoint, pkName, name string) (BlockDevice, bool) {
+	var serialId, partuuid, ptuuid, fsuuid = "", "", "", ""
+	realUuid := strings.Split(uuid, ":")
+	switch realUuid[0] {
+	case "SERIAL":
+		serialId = realUuid[1]
+	case "PTUUID":
+		ptuuid = realUuid[1]
+	case "PARTUUID":
+		partuuid = realUuid[1]
+	case "UUID":
+		fsuuid = realUuid[1]
+	default:
+		fsuuid = uuid
+	}
 	for _, blkDev := range blkDevs {
-		if (uuid == "" || blkDev.UUID == uuid) &&
+		if (serialId == "" || blkDev.SERIAL == serialId) &&
+			(partuuid == "" || blkDev.PARTUUID == partuuid) &&
+			(ptuuid == "" || blkDev.PTUUID == ptuuid) &&
+			(fsuuid == "" || blkDev.UUID == fsuuid) &&
 			(devPath == "" || blkDev.Path == devPath) &&
 			(devType == "" || blkDev.Type == devType) &&
 			(fileSystem == "" || blkDev.FileSystem == fileSystem) &&
@@ -62,36 +83,40 @@ func (blkDevs BlockDevices) GetByCriteria(uuid, devPath, devType, fileSystem, mo
 /*
 Return all block devices defined in the input text.
 The input text is presumed to be obtained from the following command's output:
-  lsblk -P -b -o UUID,KNAME,TYPE,FSTYPE,MOUNTPOINT,SIZE
+
+	lsblk -P -b -o UUID,KNAME,TYPE,FSTYPE,MOUNTPOINT,SIZE
 */
 func ParseBlockDevs(txt string) BlockDevices {
 	ret := make([]BlockDevice, 0, 8)
 	for _, line := range strings.Split(txt, "\n") {
 		fields := lsblkFields.FindAllString(line, -1)
-		if len(fields) < 7 {
+		if len(fields) < 10 {
 			continue // skip empty lines
 		}
 		// Remove surrounding quotes from match
 		for fi, field := range fields {
 			fields[fi] = field[1 : len(field)-1]
 		}
-		devPath := "/dev/" + fields[1]
-		devType := fields[2]
+		devPath := "/dev/" + fields[4]
+		devType := fields[5]
 		if devType == "crypt" {
-			devPath = "/dev/mapper/" + fields[1]
+			devPath = "/dev/mapper/" + fields[4]
 		}
 		blkDev := BlockDevice{
-			UUID:       fields[0],
-			Name:       fields[1],
+			SERIAL:     fields[0],
+			PTUUID:     fields[1],
+			PARTUUID:   fields[2],
+			UUID:       fields[3],
+			Name:       fields[4],
 			Path:       devPath,
 			Type:       devType,
-			FileSystem: fields[3],
-			MountPoint: fields[4],
-			PKName:     fields[6],
+			FileSystem: fields[6],
+			MountPoint: fields[7],
+			PKName:     fields[9],
 		}
 		// Block device size can be empty
 		if fields[5] != "" {
-			iByte, intErr := strconv.ParseUint(fields[5], 10, 64)
+			iByte, intErr := strconv.ParseUint(fields[8], 10, 64)
 			if intErr != nil {
 				panic(fmt.Errorf("ParseBlockDevs: failed to parse size number in line \"%s\"", line))
 			}
@@ -111,7 +136,7 @@ func GetBlockDevices() BlockDevices {
 
 		The parser reads NAME instead of KNAME because KNAME does not apply for names under /dev/mapper.
 	*/
-	_, stdout, stderr, err := sys.Exec(nil, nil, nil, BIN_LSBLK, "-P", "-b", "-o", "UUID,NAME,TYPE,FSTYPE,MOUNTPOINT,SIZE,PKNAME")
+	_, stdout, stderr, err := sys.Exec(nil, nil, nil, BIN_LSBLK, "-P", "-b", "-o", LSBLK_OPT)
 	if err != nil {
 		panic(fmt.Errorf("GetBlockDevices: failed to execute lsblk - %v %s %s", err, stdout, stderr))
 	}
@@ -129,7 +154,7 @@ func GetBlockDevice(node string) (blkDev BlockDevice, found bool) {
 		-b - block device size is in bytes.
 		-o - choose output columns.
 	*/
-	_, stdout, _, _ := sys.Exec(nil, nil, nil, BIN_LSBLK, "-P", "-b", "-o", "UUID,NAME,TYPE,FSTYPE,MOUNTPOINT,SIZE,PKNAME", node)
+	_, stdout, _, _ := sys.Exec(nil, nil, nil, BIN_LSBLK, "-P", "-b", "-o", LSBLK_OPT, node)
 	blkDevs := ParseBlockDevs(stdout)
 	found = len(blkDevs) > 0
 	if found {

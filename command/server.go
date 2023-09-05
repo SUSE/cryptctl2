@@ -67,36 +67,6 @@ func KeyRPCDaemon() error {
 	return nil
 }
 
-// Creates a new record for an uuid
-func AddDevice(UUID, MappedName, MountPoint, MountOptions, AllowedClients string, MaxActive int, AutoEncyption bool) error {
-	sys.LockMem()
-	client, err := keyserv.NewCryptClient("unix", keyserv.DomainSocketFile, nil, "", "")
-	if err != nil {
-		return fmt.Errorf("AddRecord: failed to create connection to cryptctl2 server - %v", err)
-	}
-	password := sys.InputPassword(true, "", "Enter key server's password (no echo)")
-	// Test the connection and password
-	if err := client.Ping(keyserv.PingRequest{PlainPassword: password}); err != nil {
-		return fmt.Errorf("AddRecord: failed to authorize to cryptctl2 server - %v", err)
-	}
-
-	req := keyserv.CreateKeyReq{
-		PlainPassword:  password,
-		UUID:           UUID,
-		MappedName:     MappedName,
-		MountPoint:     MountPoint,
-		MountOptions:   strings.Split(MountOptions, ","),
-		MaxActive:      MaxActive,
-		AllowedClients: strings.Split(AllowedClients, ","),
-		AutoEncyption:  AutoEncyption,
-	}
-	if _, err := client.CreateKey(req); err != nil {
-		return fmt.Errorf("AddRecord: failed to add new record to cryptctl2 server - %v , %v", err, req)
-	}
-	fmt.Printf("Record to %s was created succesfully", UUID)
-	return nil
-}
-
 /*
 Open key database from the location specified in sysconfig file.
 If UUID is given, the database will only load a single record.
@@ -248,10 +218,8 @@ func EditKey(uuid string) error {
 	if newOptions != "" {
 		rec.MountOptions = strings.Split(newOptions, ",")
 	}
-	newMaxActive := sys.InputInt(false, rec.MaxActive, 1, 99999, MSG_ASK_MAX_ACTIVE)
-	if newMaxActive != 0 {
-		rec.MaxActive = newMaxActive
-	}
+	rec.MaxActive = sys.InputInt(false, rec.MaxActive, 1, 99999, MSG_ASK_MAX_ACTIVE)
+
 	newAliveTimeout := sys.InputInt(false, rec.AliveIntervalSec*rec.AliveCount, DEFUALT_ALIVE_TIMEOUT, 3600*24*7, MSG_ASK_ALIVE_TIMEOUT)
 	if newAliveTimeout != 0 {
 		roundedAliveTimeout := newAliveTimeout / routine.REPORT_ALIVE_INTERVAL_SEC * routine.REPORT_ALIVE_INTERVAL_SEC
@@ -260,6 +228,14 @@ func EditKey(uuid string) error {
 		}
 		rec.AliveCount = roundedAliveTimeout / routine.REPORT_ALIVE_INTERVAL_SEC
 	}
+	rec.AutoEncryption = sys.InputBool(rec.AutoEncryption, "Enable auto encrytion")
+
+	if rec.AutoEncryption {
+		rec.FileSystem = sys.Input(false, rec.FileSystem, "File system to be created.", "ext4", "ext3", "xfs", "btrfs")
+	}
+
+	rec.AliveCount = sys.InputInt(true, rec.AliveCount, 2, 999, "Count of keeped alive packages. Min 2")
+
 	return UpdateRecord(db, rec)
 }
 
@@ -276,12 +252,17 @@ func ShowKey(uuid string) error {
 	}
 	rec.RemoveDeadHosts()
 	fmt.Printf("%-34s%s\n", "UUID", rec.UUID)
+	fmt.Printf("%-34s%s\n", "MappedName", rec.MappedName)
 	fmt.Printf("%-34s%s\n", "Mount Point", rec.MountPoint)
 	fmt.Printf("%-34s%s\n", "Mount Options", rec.GetMountOptionStr())
+	fmt.Printf("%-34s%s\n", "Allowed Clients", rec.GetAllowedClients())
 	fmt.Printf("%-34s%d\n", "Maximum Computers", rec.MaxActive)
+	fmt.Printf("%-34s%s\n", "Auto Encryption", strconv.FormatBool(rec.AutoEncryption))
+	fmt.Printf("%-34s%s\n", "File System", rec.FileSystem)
 	fmt.Printf("%-34s%d\n", "Computer Keep-Alive Timeout (sec)", rec.AliveCount*rec.AliveIntervalSec)
 	fmt.Printf("%-34s%s (%s)\n", "Last Retrieved By", rec.LastRetrieval.IP, rec.LastRetrieval.Hostname)
 	outputTime := time.Unix(rec.LastRetrieval.Timestamp, 0).Format(TIME_OUTPUT_FORMAT)
+	fmt.Printf("%-34s%d\n", "Last Retrieved On in sec", rec.LastRetrieval.Timestamp)
 	fmt.Printf("%-34s%s\n", "Last Retrieved On", outputTime)
 	fmt.Printf("%-34s%d\n", "Current Active Computers", len(rec.AliveMessages))
 	if len(rec.AliveMessages) > 0 {

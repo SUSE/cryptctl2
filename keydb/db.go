@@ -285,11 +285,17 @@ func (db *DB) Select(aliveMessage AliveMessage, checkMaxActive bool, DNSName, IP
 				log.Printf("DB.Select: record %s has not heard %d from these hosts: %+v", uuid, time.Now().Unix(), deadFinalMessage)
 			}
 			// Check if host is allowed to connect the record
-			ok2 := len(record.AllowedClients) == 0 || helper.Contains(record.AllowedClients, DNSName) || helper.Contains(record.AllowedClients, IPAddress)
+			ok2 := helper.IsEmpty(record.AllowedClients) || helper.Contains(record.AllowedClients, DNSName) || helper.Contains(record.AllowedClients, IPAddress)
 			if ok1 && ok2 {
 				db.upsert(record, true) // IO error is logged
 				found[record.UUID] = record
 			} else {
+				if !ok1 {
+					fmt.Println("Too many clients")
+				}
+				if !ok2 {
+					fmt.Printf("Not allowed client: %d %s %s", len(record.AllowedClients), DNSName, IPAddress)
+				}
 				// Too many active hosts
 				rejected = append(rejected, uuid)
 			}

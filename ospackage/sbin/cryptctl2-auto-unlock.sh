@@ -1,9 +1,12 @@
 #!/bin/bash
 
-DEV=$1
-ID_SERIAL=$2
-ID_PART_TABLE_UUID=$3
-ID_PART_ENTRY_UUID=$4
-ID_FS_UUID=$5
-
+while [ $# -gt 0 ]
+do
+	/usr/sbin/cryptctl2 --action check-auto-unlock --deviceID $1
+	if [ $? == 0 ]; then
+		/usr/bin/systemctl start cryptctl2-auto-unlock@$1
+		break
+	fi
+        shift
+done
 

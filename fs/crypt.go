@@ -25,9 +25,14 @@ func CryptFormat(key []byte, blockDev, uuid string) error {
 	if err := CheckBlockDevice(blockDev); err != nil {
 		return err
 	}
+	UUID := uuid
+	_, after, found := strings.Cut(uuid, ":")
+	if found {
+		UUID = after
+	}
+	//fmt.Printf("uuid:%s b:%s a:%s UUID:%s", uuid, before, after, UUID)
 	_, stdout, stderr, err := sys.Exec(bytes.NewReader(key), nil, nil,
-		BIN_CRYPTSETUP, "--batch-mode", "--type=luks2", "--cipher", LUKS_CIPHER, "--hash", LUKS_HASH, "--key-size", LUKS_KEY_SIZE_S,
-		"luksFormat", "--key-file=-", blockDev, "--uuid="+uuid)
+		BIN_CRYPTSETUP, "--batch-mode", "--type", "luks2", "luksFormat", "--key-file=-", blockDev, "--uuid", UUID)
 	if err != nil {
 		return fmt.Errorf("CryptFormat: failed to format \"%s\" - %v %s %s", blockDev, err, stdout, stderr)
 	}

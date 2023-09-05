@@ -70,14 +70,16 @@ func UnlockFS(progressOut io.Writer, rec keydb.Record, maxAttempts int) error {
 	// Collect information from all encrypted file systems
 	blockDevs := fs.GetBlockDevices()
 	unlockDev, found := blockDevs.GetByCriteria(rec.UUID, "", "", "", "", "", "")
+	newEncrypted := false
 	if !found {
 		return errors.New(fmt.Sprintf("Can not find device with UUID '%s'.", rec.UUID))
 	}
 	if !unlockDev.IsLUKSEncrypted() {
-		if rec.AutoEncyption {
-			if err := fs.CryptFormat(rec.Key, unlockDev.Path, unlockDev.UUID); err != nil {
+		if rec.AutoEncryption {
+			if err := fs.CryptFormat(rec.Key, unlockDev.Path, rec.UUID); err != nil {
 				return err
 			}
+			newEncrypted = true
 		} else {
 			return errors.New(fmt.Sprintf("The device with UUID '%s' does not belongs to an LUKS device and AutoEncrytion is set false.", rec.UUID))
 		}
@@ -103,7 +105,10 @@ func UnlockFS(progressOut io.Writer, rec keydb.Record, maxAttempts int) error {
 			fmt.Fprintf(progressOut, "  *%v\n", err)
 			succeeded = false
 		}
-		if rec.MountPoint != "" {
+		if succeeded && newEncrypted && rec.FileSystem != "" {
+			fs.Format(dmDev, rec.FileSystem)
+		}
+		if succeeded && rec.MountPoint != "" {
 			if err := os.MkdirAll(rec.MountPoint, 0755); err != nil {
 				fmt.Fprintf(progressOut, "  *failed to make mount point directory - %v\n", err)
 				succeeded = false
@@ -128,6 +133,26 @@ func UnlockFS(progressOut io.Writer, rec keydb.Record, maxAttempts int) error {
 		return errors.New("Failed to process the encrypted file system. Check output for more details.")
 	}
 	return nil
+}
+
+func CheckAutoUnlock(client *keyserv.CryptClient, UUID string) error {
+	blkDevs := fs.GetBlockDevices()
+	_, foundHost := blkDevs.GetByCriteria(UUID, "", "", "", "", "", "")
+	if !foundHost {
+		return fmt.Errorf("CheckAutoUnlock: cannot find a block device corresponding to UUID \"%s\"", UUID)
+	}
+	hostname, _ := sys.GetHostnameAndIP()
+	resp, err := client.AutoRetrieveKey(keyserv.AutoRetrieveKeyReq{
+		Hostname: hostname,
+		UUIDs:    []string{UUID},
+	})
+	if err == nil {
+		_, exists := resp.Granted[UUID]
+		if exists {
+			return nil
+		}
+	}
+	return fmt.Errorf("CheckAutoUnlock: access to block device corresponding to UUID \"%s\" not allowed", UUID)
 }
 
 /*

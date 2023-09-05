@@ -16,7 +16,7 @@ const (
 	CurrentRecordVersion = 3 // CurrentRecordVersion is the version of new database records to be created by cryptctl2.
 )
 
-var RegexUUID = regexp.MustCompile("^[a-zA-Z0-9-=_]+$") // RegexUUID matches characters that are allowed in a UUID
+var RegexUUID = regexp.MustCompile("^[a-zA-Z0-9-:_]+$") // RegexUUID matches characters that are allowed in a UUID
 
 /*
 ValidateUUID returns an error only if the input string is empty, or if there are illegal
@@ -72,12 +72,12 @@ type Record struct {
 	MountPoint   string   // MountPoint is the location (directory) where this file system is expected to be mounted to.
 	MountOptions []string // MountOptions is a string array of mount options specific to the file system.
 
-	MaxActive      int      // MaxActive is the maximum simultaneous number of online users (computers) for the key, or <=0 for unlimited.
-	AllowedClients []string // Array of DNS-names of clients which have access to the device. The client must use certificate containing the DNS-name in this case
-	// TODO evaluate if IP-adresses need to be allowed also.
-	AliveIntervalSec int  // AliveIntervalSec is interval in seconds that all key users (computers) should report they're online.
-	AliveCount       int  // AliveCount is number of times a key user (computer) can miss regular report and be considered offline.
-	AutoEncyption    bool // If it is true automatic encryption is allowed when the first client detects this device and the device is not already encypted.
+	MaxActive        int      // MaxActive is the maximum simultaneous number of online users (computers) for the key, or <=0 for unlimited.
+	AllowedClients   []string // Array of DNS-names of clients which have access to the device. The client must use certificate containing the DNS-name in this case
+	AliveIntervalSec int      // AliveIntervalSec is interval in seconds that all key users (computers) should report they're online.
+	AliveCount       int      // AliveCount is number of times a key user (computer) can miss regular report and be considered offline.
+	AutoEncryption   bool     // If it is true automatic encryption is allowed when the first client detects this device and the device is not already encypted.
+	FileSystem       string   // The filesystem on this device. Used only if AutoEncryption is true
 
 	LastRetrieval   AliveMessage                // LastRetrieval is the computer who most recently successfully retrieved the key.
 	AliveMessages   map[string][]AliveMessage   // AliveMessages are the most recent alive reports in IP - message array pairs.
@@ -169,6 +169,9 @@ unconditionally updated.
 */
 func (rec *Record) UpdateLastRetrieval(latestBeat AliveMessage, checkMaxActive bool) (updateOK bool,
 	deadFinalMessage map[string]AliveMessage) {
+	if rec.AliveCount < 2 {
+		rec.AliveCount = 2
+	}
 	// Remove dead hosts before checking number of active key users
 	deadFinalMessage = rec.RemoveDeadHosts()
 	if checkMaxActive && rec.MaxActive > 0 && len(rec.AliveMessages) >= rec.MaxActive {
@@ -185,6 +188,9 @@ func (rec *Record) UpdateLastRetrieval(latestBeat AliveMessage, checkMaxActive b
 // Record the latest alive message in message history.
 func (rec *Record) UpdateAliveMessage(latestBeat AliveMessage) bool {
 	if beats, found := rec.AliveMessages[latestBeat.IP]; found {
+		if rec.AliveCount < 2 {
+			rec.AliveCount = 2
+		}
 		if len(beats) >= rec.AliveCount {
 			// Remove the oldest message and push the latest one to the end
 			rec.AliveMessages[latestBeat.IP] = append(beats[len(beats)-rec.AliveCount+1:], latestBeat)

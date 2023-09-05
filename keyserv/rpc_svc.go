@@ -469,7 +469,8 @@ type CreateKeyReq struct {
 	AllowedClients   []string // Array of DNS-names of clients which have access to the device. The client must use certificate containing the DNS-name in this case
 	AliveIntervalSec int      // interval in seconds at which all user of the file system holding this key must report they're online
 	AliveCount       int      // a computer holding the file system is considered offline after missing so many alive messages
-	AutoEncyption    bool     // If it is true automatic encryption is allowed when the first client detects this device and the device is not already encypted.
+	AutoEncryption   bool     // If it is true automatic encryption is allowed when the first client detects this device and the device is not already encypted.
+	FileSystem       string   // Filesystem to be created if AutoEncryption is true
 }
 
 // Make sure that the request attributes are sane.
@@ -534,6 +535,8 @@ func (rpcConn *CryptServiceConn) CreateKey(req CreateKeyReq, resp *CreateKeyResp
 	keyRecord.AliveIntervalSec = req.AliveIntervalSec
 	keyRecord.AliveCount = req.AliveCount
 	keyRecord.AllowedClients = req.AllowedClients
+	keyRecord.AutoEncryption = req.AutoEncryption
+	keyRecord.FileSystem = req.FileSystem
 	if _, err := rpcConn.Svc.KeyDB.Upsert(keyRecord); err != nil {
 		return fmt.Errorf("CryptServiceConn.CreateKey: failed to save key tracking record into database - %v", err)
 	}

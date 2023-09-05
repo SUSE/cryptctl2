@@ -6,6 +6,9 @@ import (
 	"crypto/tls"
 )
 
+/*
+Function to check if any element of an array is the searched string
+*/
 func Contains(list []string, b string) bool {
 	for _, s := range list {
 		if s == b {
@@ -15,6 +18,22 @@ func Contains(list []string, b string) bool {
 	return false
 }
 
+/*
+Function to check if all elements of an array are empty
+*/
+func IsEmpty(list []string) bool {
+	for _, s := range list {
+		if s != "" {
+			return false
+		}
+	}
+	return true
+}
+
+/*
+Delivers the DNSName and IPAddress from a tls certificate
+Only the first element of both array are trated
+*/
 func GetCertificatInfo(conn *tls.Conn) (DNSName, IPAddress string) {
 	state := conn.ConnectionState()
 	for _, cert := range state.PeerCertificates {

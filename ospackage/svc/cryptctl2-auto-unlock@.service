@@ -5,7 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/sbin/cryptctl2 --action auto-unlock --diskID %i
+ExecStart=/usr/sbin/cryptctl2 --action auto-unlock --deviceID %i
 User=root
 Group=root
 WorkingDirectory=/

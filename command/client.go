@@ -250,21 +250,27 @@ func ManOfflineUnlockFS() error {
 }
 
 /*
+Helper to get a client connection fro sysconfig
+*/
+func OpenConnection() (*keyserv.CryptClient, error) {
+	sys.LockMem()
+	sysconf, err := sys.ParseSysconfigFile(CLIENT_CONFIG_PATH, false)
+	if err != nil {
+		return nil, err
+	}
+	if sysconf.GetString(keyserv.CLIENT_CONF_HOST, "") == "" {
+		return nil, fmt.Errorf(MSG_UNLOCK_IS_NOP)
+	}
+	return keyserv.NewCryptClientFromSysconfig(sysconf)
+}
+
+/*
 Sub-command: contact key server to retrieve encryption key to unlock a single file system, then continuously send alive
 reports to server to indicate that computer is still holding onto the encrypted disk.
 Block caller until the program quits or server rejects this computer.
 */
 func AutoOnlineUnlockFS(uuid string) error {
-	sys.LockMem()
-	sysconf, err := sys.ParseSysconfigFile(CLIENT_CONFIG_PATH, false)
-	if err != nil {
-		return err
-	}
-	if sysconf.GetString(keyserv.CLIENT_CONF_HOST, "") == "" {
-		fmt.Println(MSG_UNLOCK_IS_NOP)
-		return nil
-	}
-	client, err := keyserv.NewCryptClientFromSysconfig(sysconf)
+	client, err := OpenConnection()
 	if err != nil {
 		return err
 	}
@@ -272,6 +278,57 @@ func AutoOnlineUnlockFS(uuid string) error {
 		return err
 	}
 	return routine.ReportAlive(os.Stderr, client, uuid)
+}
+
+/*
+Check if the device with given uuid should be handled by cryptctl2 client daemon on this client
+*/
+func CheckAutoUnlock(uuid string) error {
+	client, err := OpenConnection()
+	if err != nil {
+		return err
+	}
+	if err := routine.CheckAutoUnlock(client, uuid); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Creates a new record for an uuid
+func AddDevice(UUID, MappedName, MountPoint, MountOptions, AllowedClients string, MaxActive int, AutoEncryption bool, FileSystem string) error {
+	var client *keyserv.CryptClient
+	var err error
+	if _, err = os.Stat(keyserv.DomainSocketFile); err == nil {
+		client, err = keyserv.NewCryptClient("unix", keyserv.DomainSocketFile, nil, "", "")
+	} else {
+		client, err = OpenConnection()
+	}
+	if err != nil {
+		return fmt.Errorf("AddRecord: failed to create connection to cryptctl2 server - %v", err)
+	}
+	password := sys.InputPassword(true, "", "Enter key server's password (no echo)")
+	// Test the connection and password
+	if err := client.Ping(keyserv.PingRequest{PlainPassword: password}); err != nil {
+		return fmt.Errorf("AddRecord: failed to authorize to cryptctl2 server - %v", err)
+	}
+
+	req := keyserv.CreateKeyReq{
+		PlainPassword:  password,
+		UUID:           UUID,
+		MappedName:     MappedName,
+		MountPoint:     MountPoint,
+		MountOptions:   strings.Split(MountOptions, ","),
+		MaxActive:      MaxActive,
+		AllowedClients: strings.Split(AllowedClients, ","),
+		AutoEncryption: AutoEncryption,
+		FileSystem:     FileSystem,
+		AliveCount:     4,
+	}
+	if _, err := client.CreateKey(req); err != nil {
+		return fmt.Errorf("AddRecord: failed to add new record to cryptctl2 server - %v , %v", err, req)
+	}
+	fmt.Printf("Record to %s was created succesfully", UUID)
+	return nil
 }
 
 /*
@@ -318,16 +375,7 @@ ClientDaemon runs the main routine of "client-daemon" sub-command.
 The routine primarily polls for pending commands and execute them.
 */
 func ClientDaemon() error {
-	sys.LockMem()
-	sysconf, err := sys.ParseSysconfigFile(CLIENT_CONFIG_PATH, false)
-	if err != nil {
-		return err
-	}
-	if sysconf.GetString(keyserv.CLIENT_CONF_HOST, "") == "" {
-		fmt.Println(MSG_UNLOCK_IS_NOP)
-		return nil
-	}
-	client, err := keyserv.NewCryptClientFromSysconfig(sysconf)
+	client, err := OpenConnection()
 	if err != nil {
 		return err
 	}
