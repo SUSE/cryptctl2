@@ -250,7 +250,7 @@ func ManOfflineUnlockFS() error {
 }
 
 /*
-Helper to get a client connection fro sysconfig
+Helper to get a client connection from sysconfig
 */
 func OpenConnection() (*keyserv.CryptClient, error) {
 	sys.LockMem()

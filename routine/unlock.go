@@ -76,10 +76,14 @@ func UnlockFS(progressOut io.Writer, rec keydb.Record, maxAttempts int) error {
 	}
 	if !unlockDev.IsLUKSEncrypted() {
 		if rec.AutoEncryption {
-			if err := fs.CryptFormat(rec.Key, unlockDev.Path, rec.UUID); err != nil {
-				return err
+			if unlockDev.FileSystem == "" {
+				// It is an empty device we can encrypt it.
+				if err := fs.CryptFormat(rec.Key, unlockDev.Path, rec.UUID); err != nil {
+					return err
+				}
+				newEncrypted = true
 			}
-			newEncrypted = true
+			//TODO inplace enryption if filesystem can be srink
 		} else {
 			return errors.New(fmt.Sprintf("The device with UUID '%s' does not belongs to an LUKS device and AutoEncrytion is set false.", rec.UUID))
 		}

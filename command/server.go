@@ -265,6 +265,7 @@ func ShowKey(uuid string) error {
 	fmt.Printf("%-34s%d\n", "Last Retrieved On in sec", rec.LastRetrieval.Timestamp)
 	fmt.Printf("%-34s%s\n", "Last Retrieved On", outputTime)
 	fmt.Printf("%-34s%d\n", "Current Active Computers", len(rec.AliveMessages))
+	fmt.Printf("%-34s[% x]\n", "Encryption Key", rec.Key)
 	if len(rec.AliveMessages) > 0 {
 		// Print alive message's details from each computer
 		for _, msgs := range rec.AliveMessages {
